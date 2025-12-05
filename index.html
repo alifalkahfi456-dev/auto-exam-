@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Auto Exam Overlay</title>
+  <style>
+    /* ===================== BODY & BACKGROUND ===================== */
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden;
+      font-family: system-ui;
+    }
+
+    #background {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-image: url('https://files.catbox.moe/tmmmi9.jpeg'); /* ganti link catbox sesuai kebutuhan */
+      background-size: cover;
+      background-position: center;
+      filter: blur(6px);
+      z-index: 1;
+    }
+
+    /* ===================== BUTTON PERMOHONAN IZIN ===================== */
+    #permissionContainer {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.85);
+      padding: 30px 40px;
+      border-radius: 20px;
+      text-align: center;
+      color: white;
+      z-index: 9999999;
+    }
+
+    #permissionContainer button {
+      padding: 12px 24px;
+      font-size: 16px;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      background-color: #4ade80;
+      color: #000;
+      margin-top: 20px;
+    }
+
+    #permissionContainer button:hover {
+      background-color: #22c55e;
+    }
+
+    /* ===================== BOLA DRAG ===================== */
+    #ball {
+      position: fixed;
+      width: 68px;
+      height: 68px;
+      background-image: url('https://files.catbox.moe/6jhbir.jpeg'); /* logo bola */
+      background-size: cover;
+      background-position: center;
+      border-radius: 50%;
+      box-shadow: 0 8px 25px rgba(0,0,0,0.7);
+      cursor: move;
+      z-index: 999999;
+      display: none; /* tampil setelah izin */
+      touch-action: none;
+      user-select: none;
+      transition: transform 0.15s;
+      will-change: left, top, transform;
+    }
+
+    #ball:active {
+      transform: scale(0.95);
+    }
+
+    /* ===================== PANEL ===================== */
+    #panel {
+      position: fixed;
+      width: 250px;
+      background: rgba(15,15,15,0.98);
+      color: #fff;
+      padding: 20px;
+      border-radius: 18px;
+      z-index: 999998;
+      display: none;
+      box-shadow: 0 15px 40px rgba(0,0,0,0.85);
+      border: 1px solid #555;
+      backdrop-filter: blur(12px);
+      border-top: 1px solid rgba(255,255,255,0.1);
+      border-left: 1px solid rgba(255,255,255,0.05);
+      will-change: left, top;
+    }
+
+    #panel-header {
+      text-align: center;
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 15px;
+      color: #f0f0f0;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+
+    #status {
+      margin: 12px 0;
+      text-align: center;
+      font-size: 14px;
+      color: #4ade80;
+    }
+
+    button.panelBtn {
+      width: 100%;
+      padding: 14px;
+      margin: 10px 0;
+      border: none;
+      border-radius: 14px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    #startBtn {
+      background: #4285f4;
+      color: white;
+    }
+    #startBtn:hover {
+      background: #3367d6;
+    }
+
+    #stopBtn {
+      background: #ea4335;
+      color: white;
+    }
+    #stopBtn:hover {
+      background: #d93025;
+    }
+
+    .spinner {
+      width: 36px;
+      height: 36px;
+      border: 5px solid #333;
+      border-top: 5px solid #4285f4;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 15px auto;
+      display: none;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    #connector {
+      position: fixed;
+      background: rgba(15,15,15,0.8);
+      border-radius: 6px;
+      z-index: 999997;
+      display: none;
+      height: 6px;
+      width: 0;
+      transform: rotate(0deg);
+      will-change: left, top, width;
+    }
+
+    #panel::after {
+      content: '';
+      position: absolute;
+      width: 0;
+      height: 0;
+      border: 8px solid transparent;
+      top: 50%;
+      transform: translateY(-50%);
+      left: -16px;
+      border-right-color: rgba(15,15,15,0.98);
+      display: block;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="background"></div>
+
+  <div id="permissionContainer">
+    <div>Izinkan aplikasi tampil di atas aplikasi lain?</div>
+    <button id="allowOverlayBtn">IZINKAN</button>
+  </div>
+
+  <div id="ball"></div>
+  <div id="connector"></div>
+  <div id="panel">
+    <div id="panel-header">AUTO EXAM 2025</div>
+    <div id="status">Buka soal 1 → tekan Start</div>
+    <div class="spinner" id="load"></div>
+    <button class="panelBtn" id="startBtn">START FULL AUTO</button>
+    <button class="panelBtn" id="stopBtn">STOP AUTO</button>
+  </div>
+
+<script>
+  const permissionContainer = document.getElementById('permissionContainer');
+  const allowOverlayBtn = document.getElementById('allowOverlayBtn');
+  const ball = document.getElementById('ball');
+  const connector = document.getElementById('connector');
+  const panel = document.getElementById('panel');
+  const status = document.getElementById('status');
+  const load = document.getElementById('load');
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn = document.getElementById('stopBtn');
+
+  let running = false;
+  const GAP = 12;
+
+  // POSISI AWAL
+  let ballX = parseFloat(localStorage.getItem('ballX')) || innerWidth/2 - 34 - 250 - GAP;
+  let ballY = parseFloat(localStorage.getItem('ballY')) || innerHeight - 220;
+
+  let smooth = { ballX: ballX, ballY: ballY, panelX: 0, panelY: 0, connW: 0 };
+
+  // ===================== IZIN OVERLAY =====================
+  allowOverlayBtn.onclick = () => {
+    permissionContainer.style.display = 'none';
+    ball.style.display = 'block';
+    connector.style.display = 'block';
+    ball.style.left = ballX + 'px';
+    ball.style.top = ballY + 'px';
+    requestAnimationFrame(animate);
+  };
+
+  // ===================== ANIMASI SUPER SMOOTH =====================
+  function animate() {
+    ball.style.left = (smooth.ballX += (ballX - smooth.ballX) * 0.18) + "px";
+    ball.style.top = (smooth.ballY += (ballY - smooth.ballY) * 0.18) + "px";
+
+    if (panel.style.display === "block") {
+      const br = ball.getBoundingClientRect();
+      const pr = panel.getBoundingClientRect();
+      const tX = br.right + GAP + 12;
+      const tY = br.top + (br.height/2) - (pr.height/2);
+      smooth.panelX += (tX - smooth.panelX) * 0.18;
+      smooth.panelY += (tY - smooth.panelY) * 0.18;
+      panel.style.left = smooth.panelX + "px";
+      panel.style.top  = smooth.panelY + "px";
+      const targetW = smooth.panelX - (br.right + GAP);
+      smooth.connW += (targetW - smooth.connW) * 0.22;
+      connector.style.width = smooth.connW + "px";
+    }
+
+    requestAnimationFrame(animate);
+  }
+
+  // ===================== DRAG & PANEL TOGGLE =====================
+  let dragging = false;
+  let touchStartX, touchStartY;
+
+  const startEvent = (e) => {
+    e.preventDefault();
+    dragging = false;
+    touchStartX = e.type === 'touchstart' ? e.touches[0].clientX : e.clientX;
+    touchStartY = e.type === 'touchstart' ? e.touches[0].clientY : e.clientY;
+  };
+
+  const moveEvent = (e) => {
+    if (touchStartX === undefined) return;
+    const cx = e.type === 'touchmove' ? e.touches[0].clientX : e.clientX;
+    const cy = e.type === 'touchmove' ? e.touches[0].clientY : e.clientY;
+    if (Math.abs(cx - touchStartX) > 12 || Math.abs(cy - touchStartY) > 12) dragging = true;
+    if (dragging) {
+      ballX = cx - 34;
+      ballY = cy - 34;
+      if (ballY < 0) ballY = 0;
+      if (ballY + 68 > innerHeight) ballY = innerHeight - 68;
+      smooth.ballX = ballX;
+      smooth.ballY = ballY;
+      localStorage.setItem('ballX', ballX);
+      localStorage.setItem('ballY', ballY);
+    }
+  };
+
+  const endEvent = () => {
+    if (!dragging && touchStartX !== undefined) {
+      // Toggle panel
+      if (panel.style.display === 'block') {
+        smooth.connW = 0;
+        setTimeout(() => {
+          panel.style.display = 'none';
+          connector.style.display = 'none';
+        }, 150);
+      } else {
+        panel.style.display = 'block';
+        connector.style.display = 'block';
+        const br = ball.getBoundingClientRect();
+        const pr = panel.getBoundingClientRect();
+        smooth.panelX = br.right + GAP + 12;
+        smooth.panelY = br.top + (br.height/2) - (pr.height/2);
+        smooth.connW = 0;
+      }
+    }
+    touchStartX = undefined;
+    touchStartY = undefined;
+    dragging = false;
+  };
+
+  ball.addEventListener('touchstart', startEvent);
+  ball.addEventListener('touchmove', moveEvent);
+  ball.addEventListener('touchend', endEvent);
+  ball.addEventListener('mousedown', startEvent);
+  document.addEventListener('mousemove', moveEvent);
+  document.addEventListener('mouseup', endEvent);
+  document.addEventListener('mouseleave', endEvent);
+
+  // ===================== STOP BUTTON =====================
+  stopBtn.onclick = () => {
+    if (running) {
+      running = false;
+      status.textContent = "DIHENTIKAN OLEH PENGGUNA";
+      load.style.display = 'none';
+    }
+    smooth.connW = 0;
+    setTimeout(() => {
+      panel.style.display = 'none';
+      connector.style.display = 'none';
+    }, 150);
+  };
+
+  // ===================== START BUTTON (AUTO EXAM) =====================
+  startBtn.onclick = async () => {
+    if (running) return;
+    running = true;
+    load.style.display = 'block';
+    status.textContent = "Memulai...";
+    let nomor = 1;
+
+    while (running) {
+      status.textContent = `Soal ${nomor} – mencari...`;
+      await sleep(1200);
+
+      const soal = cariSoalSekarang();
+      if (!soal) {
+        status.textContent = `SELESAI! Total ${nomor-1} soal`;
+        break;
+      }
+
+      const jawaban = await tanyaGemini(soal.text);
+      klikJawabanBenar(soal.options, jawaban);
+
+      status.textContent = `Soal ${nomor} selesai → next`;
+      await sleep(1600 + Math.random()*800);
+
+      if (!klikTombolNext()) {
+        status.textContent = `SELESAI! Total ${nomor} soal`;
+        break;
+      }
+
+      await tungguSoalBaru(10000);
+      nomor++;
+    }
+
+    running = false;
+    load.style.display = 'none';
+  };
+
+  // ===================== FUNGSI PENDUKUNG =====================
+  function cariSoalSekarang() {
+    let teks = '';
+    let opts = [];
+    document.querySelectorAll('*').forEach(el => {
+      const t = (el.innerText || '').trim();
+      if (t.length > 25 && t.length < 1500 && (t.includes('?') || /^\d+[\.\)]/.test(t))) {
+        teks = t;
+        const container = el.closest('div,section,form') || document.body;
+        container.querySelectorAll('button,label,div,span,[onclick],[role="button"]').forEach(e => {
+          const txt = (e.innerText || '').trim();
+          if (txt && txt.length < 300) opts.push({el: e, text: txt});
+        });
+      }
+    });
+    return opts.length >= 3 ? {text: teks, options: opts} : null;
+  }
+
+  async function tanyaGemini(soal) {
+    const API_KEY = "AIzaSyAGfdd6a81husyFMfEgxTZ8qBO3S4R8GiY";
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          contents: [{role: "user", parts: [{text: `Jawab HANYA teks jawaban yang benar:\n\n${soal}`}] }]
+        })
+      });
+      const data = await res.json();
+      return data.candidates[0].content.parts[0].text.trim();
+    } catch {
+      status.textContent = "GAGAL HUBUNGI GEMINI";
+      return "A";
+    }
+  }
+
+  function klikJawabanBenar(options, jawaban) {
+    const j = jawaban.toLowerCase();
+    for (const o of options) {
+      if (o.text.toLowerCase().includes(j)) {
+        o.el.click();
+        const input = o.el.querySelector('input');
+        if (input) input.checked = true;
+        break;
+      }
+    }
+  }
+
+  function klikTombolNext() {
+    const kata = ['next','berikutnya','lanjut','selanjutnya','>','continue','kirim','submit'];
+    for (const k of kata) {
+      const btn = [...document.querySelectorAll('button,a,[role="button"],div,span')]
+        .find(el => el.innerText && el.innerText.toLowerCase().includes(k) && el.offsetParent);
+      if (btn) {
+        btn.click();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  async function tungguSoalBaru(ms) {
+    const mulai = Date.now();
+    while (Date.now() - mulai < ms) {
+      if (cariSoalSekarang()) return;
+      await sleep(600);
+    }
+    status.textContent = "GAGAL TUNGGU SOAL BARU";
+  }
+
+  function sleep(ms) {
+    return new Promise(r => setTimeout(r, ms));
+  }
+
+  setInterval(()=>{},15000);
+
+</script>
+</body>
+  </html>
